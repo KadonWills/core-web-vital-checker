@@ -11,7 +11,7 @@ load_dotenv()
 
 API_KEY = os.getenv("PAGESPEED_API_KEY")
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+    #'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
     'Content-Type': 'application/json',
     'Accept': 'application/json',
     #'Authorization': f'Bearer {API_KEY}'
@@ -21,8 +21,9 @@ HEADERS = {
 
 # List of URLs to check
 urls = [
-    'https://nextjs.org/',
-    'https://dinovix.com/en',
+    'http://www.betinireland.ie',
+    #'https://nextjs.org/',
+    #'https://dinovix.com/en',
     # Add more URLs as needed
 ]
 
@@ -53,6 +54,13 @@ def check_pagespeed():
         
         if result is None:
             continue
+        #TODO: check if metric exist in loding experiance and get inp
+        if 'originLoadingExperience' in result and 'metrics' in result['originLoadingExperience']:
+            inp = result['originLoadingExperience']['metrics']['INTERACTION_TO_NEXT_PAINT']['percentile']
+            fid = result['originLoadingExperience']['metrics']['INTERACTION_TO_NEXT_PAINT']['percentile']
+            ttfb = result['originLoadingExperience']['metrics']['EXPERIMENTAL_TIME_TO_FIRST_BYTE']['percentile']
+
+
         
         if 'lighthouseResult' in result:
             lcp = result['lighthouseResult']['audits']['largest-contentful-paint']['displayValue']
@@ -91,13 +99,16 @@ def check_pagespeed():
                 'LCP score': lcp,
                 'FCP score': fcp,
                 'CLS score': cls,
+                'FID in ms': fid,
+                'INP in ms': inp,
+                'TTFB in ms': ttfb,
                 'Performance': performance_score,
                 'Accessibility': accessibility_score,
                 'SEO score': seo_score,
                 'Best Bractices': best_practices,
                 'Overall Loading Experience': overall_message
             })
-            print(f'{url} - LCP: {lcp}, FCP: {fcp}, CLS: {cls}, Performance: {performance_score}, Accessibility: {accessibility_score}, SEO: {seo_score} \n')
+            print(f'{url} - LCP: {lcp}, INP: {inp},  FCP: {fcp}, CLS: {cls}, Performance: {performance_score}, Accessibility: {accessibility_score}, SEO: {seo_score} \n')
             emoji = ''
             if overall_message.capitalize() == 'Slow' or overall_message == None:
                 emoji = '👎'
@@ -130,25 +141,43 @@ def write_to_excel_file_and_format(data, filename):
     wb = openpyxl.load_workbook(filename)
     ws = wb.active
     for column_cells in ws.iter_cols(max_row=1):
-        max_length = 0
+        max_length = 30
         for cell in column_cells:
             if cell.value is not None:
                 if len(str(cell.value)) > max_length:
                     max_length = len(str(cell.value))
-        ws.column_dimensions[openpyxl.utils.get_column_letter(column_cells[0].column)].width = max_length
+        ws.column_dimensions[openpyxl.utils.get_column_letter(column_cells[0].column)].width = max_length + 3
+        ws.column_dimensions[openpyxl.utils.get_column_letter(column_cells[0].column)].height = 22.5
 
     for row in ws.iter_rows(min_row=2):
         for cell in row:
             if cell.value:
-                cell.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
-                # Overall Loading Experience cells should be colored based on their value
                 
+                if cell is not row[0]:
+                    cell.alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
+
+                if cell is row[1]: #LCP
+                    cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color= "90EE90" if float(cell.value.rstrip(' s')) <= 2.5 else "FFCC00" if float(cell.value.rstrip('s')) <= 4 else "FFCCCC")
+                if cell is row[2]: #FCP
+                    cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color=("90EE90" if float(cell.value.rstrip(' s')) <= 1.8 else "FFCC00" if float(cell.value.rstrip('s')) <= 3 else "FFCCCC"))
+                if cell is row[3]: #CLS
+                    cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color=("90EE90" if float(cell.value.rstrip(' s')) <= 0.1 else "FFCC00" if float(cell.value.rstrip('s')) <= 0.25 else "FFCCCC"))
+                if cell is row[7]: #Performance
+                    cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color=("90EE90" if float(cell.value.rstrip('%')) >= 90 else "FFCC00" if float(cell.value.rstrip('%'))  >= 50 else "FFCCCC"))
+                if cell is row[8]: #Acc
+                    cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color=("90EE90" if float(cell.value.rstrip('%')) >= 90 else "FFCC00" if float(cell.value.rstrip('%'))  >= 50 else "FFCCCC"))
+                if cell is row[9]: #Seo
+                    cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color=("90EE90" if float(cell.value.rstrip('%')) >= 90 else "FFCC00" if float(cell.value.rstrip('%'))  >= 50 else "FFCCCC"))
+                if cell is row[10]: #Best pr.
+                    cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color=("90EE90" if float(cell.value.rstrip('%')) >= 90 else "FFCC00" if float(cell.value.rstrip('%'))  >= 50 else "FFCCCC"))
+
+                # Overall Loading Experience cells should be coloFFCCCC based on their value
                 if cell.value == 'FAST':
                     cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color='00FF00')
                 elif cell.value == 'AVERAGE':
                     cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color='FFFF00')
                 elif cell.value == 'SLOW':
-                    cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color='FF0000')
+                    cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color='FF0000') 
         # minimum column width should be set to fit the content
     wb.save(filename)
     wb.close()
