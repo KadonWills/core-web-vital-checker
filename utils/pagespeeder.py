@@ -70,7 +70,7 @@ def check_pagespeed():
         if 'originLoadingExperience' in result and 'metrics' in result['originLoadingExperience']:
             try:
                 inp = result['originLoadingExperience']['metrics']['INTERACTION_TO_NEXT_PAINT']['percentile']
-                fid = result['originLoadingExperience']['metrics']['INTERACTION_TO_NEXT_PAINT']['percentile']
+                fid = result['originLoadingExperience']['metrics']['FIRST_INPUT_DELAY_MS']['percentile']
                 ttfb = result['originLoadingExperience']['metrics']['EXPERIMENTAL_TIME_TO_FIRST_BYTE']['percentile']
             except KeyError as e:
                 print(f'Failed to fetch INP, FID, or TTFB for {url}.')
