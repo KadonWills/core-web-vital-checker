@@ -17,24 +17,31 @@ HEADERS = {
     #'Authorization': f'Bearer {API_KEY}'
 }
 
+try:
+    urls = pd.read_csv('./urls.csv')['url'].tolist()
+except FileNotFoundError:
+    print("urls.csv file not found. Please make sure it's in the same directory as main.py")
+    exit()
+except pd.errors.EmptyDataError:
+    print("urls.csv file is empty. Please make sure it's not empty, and it starts with a header (url).")
+    exit()
+except pd.errors.ParserError as e:
+    print(f"Error parsing urls.csv: {e}")
+    exit()
 
 
-# List of URLs to check
-urls = [
-    'http://www.betinireland.ie',
-    #'https://nextjs.org/',
-    #'https://dinovix.com/en',
-    # Add more URLs as needed
-]
 
 def get_page_speed_data(url, category='performance', strategy='mobile'):
     """Fetches Core Web Vitals, performance, accessibility, and SEO data for a given URL."""
     try:
         endpoint = f'https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={url}&category={category}&strategy={strategy}'
         response = requests.get(endpoint, headers=HEADERS)
+        response.raise_for_status()
         return response.json()
-    except:
-        print(f'Failed to fetch data for {url}.')
+    except requests.exceptions.RequestException as e:
+        print(f'Error: {e}')
+        return None
+        print(f'Failed to fetch data for {url}. : {e}')
         return None
     
 
@@ -50,49 +57,70 @@ def check_pagespeed():
 
     for url in urls:
         print(f'\nChecking CWV & perfomance for {url}...')
-        result = get_page_speed_data(url)
-        
+        try:
+            result = get_page_speed_data(url)
+        except Exception as e:
+            print(f'Failed to fetch data for {url}.')
+            print(f'Error: {e}')
+            continue
+
         if result is None:
             continue
         #TODO: check if metric exist in loding experiance and get inp
         if 'originLoadingExperience' in result and 'metrics' in result['originLoadingExperience']:
-            inp = result['originLoadingExperience']['metrics']['INTERACTION_TO_NEXT_PAINT']['percentile']
-            fid = result['originLoadingExperience']['metrics']['INTERACTION_TO_NEXT_PAINT']['percentile']
-            ttfb = result['originLoadingExperience']['metrics']['EXPERIMENTAL_TIME_TO_FIRST_BYTE']['percentile']
+            try:
+                inp = result['originLoadingExperience']['metrics']['INTERACTION_TO_NEXT_PAINT']['percentile']
+                fid = result['originLoadingExperience']['metrics']['INTERACTION_TO_NEXT_PAINT']['percentile']
+                ttfb = result['originLoadingExperience']['metrics']['EXPERIMENTAL_TIME_TO_FIRST_BYTE']['percentile']
+            except KeyError as e:
+                print(f'Failed to fetch INP, FID, or TTFB for {url}.')
+                # print(f'Error: {e}')
+                inp = "N/A"
+                fid = "N/A"
+                ttfb = "N/A"
+                
 
 
-        
         if 'lighthouseResult' in result:
-            lcp = result['lighthouseResult']['audits']['largest-contentful-paint']['displayValue']
-            fcp = result.get('lighthouseResult', {}).get('audits', {}).get('first-contentful-paint', {}).get('displayValue', '')
-            #fid = result['lighthouseResult']['audits']['first-input']['displayValue']
+            try:
+                lcp = result['lighthouseResult']['audits']['largest-contentful-paint']['displayValue']
+                fcp = result.get('lighthouseResult', {}).get('audits', {}).get('first-contentful-paint', {}).get('displayValue', '')
+                cls = result.get('lighthouseResult', {}).get('audits', {}).get('cumulative-layout-shift', {}).get('displayValue', '')
+                performance_score = f"{str(result['lighthouseResult']['categories']['performance']['score']*100)}%"
+                
+                if 'accessibility' in result['lighthouseResult']['categories']:
+                    accessibility_score = f"{result['lighthouseResult']['categories']['accessibility']['score']*100}%"
+                else:
+                    result = get_page_speed_data(url, "accessibility")
+                    accessibility_score = f"{result['lighthouseResult']['categories']['accessibility']['score']*100}%"
+                
+                if 'best-practices' in result['lighthouseResult']['categories']:
+                    best_practices = f"{result['lighthouseResult']['categories']['best-practices']['score']*100}%"
+                else:
+                    result = get_page_speed_data(url, "best-practices")
+                    best_practices = f"{result['lighthouseResult']['categories']['best-practices']['score']*100}%"
+                if 'seo' in result['lighthouseResult']['categories']:
+                    seo_score = f"{result['lighthouseResult']['categories']['seo']['score']*100}%"
+                else:
+                    result = get_page_speed_data(url, "seo")
+                    seo_score = f"{result['lighthouseResult']['categories']['seo']['score']*100}%"
 
-            cls = result.get('lighthouseResult', {}).get('audits', {}).get('cumulative-layout-shift', {}).get('displayValue', '')
-            performance_score = f"{str(result['lighthouseResult']['categories']['performance']['score']*100)}%"
-            
-            if 'accessibility' in result['lighthouseResult']['categories']:
-                accessibility_score = f"{result['lighthouseResult']['categories']['accessibility']['score']*100}%"
-            else:
-                result = get_page_speed_data(url, "accessibility")
-                accessibility_score = f"{result['lighthouseResult']['categories']['accessibility']['score']*100}%"
-
-
-            if 'best-practices' in result['lighthouseResult']['categories']:
-                best_practices = f"{result['lighthouseResult']['categories']['best-practices']['score']*100}%"
-            else:
-                result = get_page_speed_data(url, "best-practices")
-                best_practices = f"{result['lighthouseResult']['categories']['best-practices']['score']*100}%"
-            if 'seo' in result['lighthouseResult']['categories']:
-                seo_score = f"{result['lighthouseResult']['categories']['seo']['score']*100}%"
-            else:
-                result = get_page_speed_data(url, "seo")
-                seo_score = f"{result['lighthouseResult']['categories']['seo']['score']*100}%"
-            
-            # get overall loading experience message
-            if 'overall_category' in result['loadingExperience']: 
-                overall_message = result['loadingExperience']['overall_category']
-            else:
-                overall_message = ""
+                # get overall loading experience message
+                if 'overall_category' in result['loadingExperience']: 
+                    overall_message = result['loadingExperience']['overall_category']
+                else:
+                    overall_message = ""
+            except KeyError as e:
+                print(f'Failed to fetch LCP, FCP, CLS, Performance, Accessibility, SEO or Overall Loading Experience for {url}.')
+                print(f'Error: {e}')
+                lcp = "N/A"
+                fcp = "N/A"
+                cls = "N/A"
+                performance_score = "N/A"
+                accessibility_score = "N/A"
+                seo_score = "N/A"
+                best_practices = "N/A"
+                overall_message = "N/A"
 
             data.append({
                 'Website URL': url,
@@ -108,6 +136,7 @@ def check_pagespeed():
                 'Best Bractices': best_practices,
                 'Overall Loading Experience': overall_message
             })
+
             print(f'{url} - LCP: {lcp}, INP: {inp},  FCP: {fcp}, CLS: {cls}, Performance: {performance_score}, Accessibility: {accessibility_score}, SEO: {seo_score} \n')
             emoji = ''
             if overall_message.capitalize() == 'Slow' or overall_message == None:
@@ -122,13 +151,14 @@ def check_pagespeed():
             continue
 
     if data:
-        now = datetime.now().strftime("%Y-%m-%d_%Hh%Mm.xlsx")
-        filename = f'cwv_report_{now}'
-
-        write_to_excel_file_and_format(data, filename)
-
-        print(f'Report saved to {filename}')
-
+        try:
+            now = datetime.now().strftime("%Y-%m-%d_%Hh%Mm.xlsx")
+            filename = f'cwv_report_{now}'
+            write_to_excel_file_and_format(data, filename)
+            print(f'Report saved to {filename}')
+        except Exception as e:
+            print(f'Failed to save report to {filename}.')
+            print(f'Error: {e}')
 
 def write_to_excel_file_and_format(data, filename):
     """Write data to an Excel file and format the cells."""
@@ -141,13 +171,13 @@ def write_to_excel_file_and_format(data, filename):
     wb = openpyxl.load_workbook(filename)
     ws = wb.active
     for column_cells in ws.iter_cols(max_row=1):
-        max_length = 30
+        max_length = 10
         for cell in column_cells:
             if cell.value is not None:
                 if len(str(cell.value)) > max_length:
                     max_length = len(str(cell.value))
-        ws.column_dimensions[openpyxl.utils.get_column_letter(column_cells[0].column)].width = max_length + 3
-        ws.column_dimensions[openpyxl.utils.get_column_letter(column_cells[0].column)].height = 22.5
+        ws.column_dimensions[openpyxl.utils.get_column_letter(column_cells[0].column)].width = 35 if column_cells[0].column == 1 else (max_length + 3)
+        ws.column_dimensions[openpyxl.utils.get_column_letter(column_cells[0].column)].height = 25
 
     for row in ws.iter_rows(min_row=2):
         for cell in row:
@@ -178,26 +208,6 @@ def write_to_excel_file_and_format(data, filename):
                     cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color='FFFF00')
                 elif cell.value == 'SLOW':
                     cell.fill = openpyxl.styles.PatternFill(fill_type='solid', start_color='FF0000') 
-        # minimum column width should be set to fit the content
+        
     wb.save(filename)
     wb.close()
-
-
-
-def get_local_lighthouse_data(url = urls[0] or 'https://nextjs.org/'):
-    """Attemptin to fetch Lighthouse data locally for a given URL."""
-        # Initialize LighthouseCI
-    lc = LighthouseCI(lighthouse_path="", chrome_path="C:/Program Files (x86)/Google/Chrome/Application/chrome.exe")
-
-    config = {
-        "extends": "lighthouse:default",
-        "settings": {
-            "categories": ["performance", "accessibility", "best-practices", "seo"]
-        }
-    }
-
-    report = lc.run(url, config=config)
-
-    for category in report.categories():
-        print(f"{category}: {report.category(category)['score']} ({report.category(category)['displayValue']})")
-
